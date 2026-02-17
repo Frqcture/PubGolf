@@ -1,101 +1,91 @@
-import Peer from 'peerjs';
+import { supabase } from './supabaseClient';
+
+// Generate a short game code for sharing
+const generateGameCode = () => {
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
+};
 
 class P2PManager {
   constructor() {
-    this.peer = null;
-    this.connections = [];
+    this.channel = null;
     this.onDataCallback = null;
     this.onConnectionCallback = null;
     this.isHost = false;
     this.peerId = null;
+    this.gameCode = null;
   }
 
-  // Initialize as host
+  // Initialize as host — creates a new Supabase Realtime channel
   initHost(callback) {
-    this.peer = new Peer();
     this.isHost = true;
+    this.gameCode = generateGameCode();
+    this.peerId = 'host_' + Math.random().toString(36).substring(2, 8);
 
-    this.peer.on('open', (id) => {
-      console.log('Host peer ID:', id);
-      this.peerId = id;
-      if (callback) callback(id);
+    this.channel = supabase.channel(`game:${this.gameCode}`, {
+      config: { broadcast: { self: false } },
     });
 
-    this.peer.on('connection', (conn) => {
-      console.log('New connection from:', conn.peer);
-      this.setupConnection(conn);
-      if (this.onConnectionCallback) {
-        this.onConnectionCallback(conn);
-      }
-    });
-
-    this.peer.on('error', (err) => {
-      console.error('Peer error:', err);
-    });
+    this.channel
+      .on('broadcast', { event: 'game_message' }, ({ payload }) => {
+        console.log('Host received:', payload);
+        if (this.onDataCallback) {
+          // Wrap sender info in a conn-like object for compatibility
+          const conn = { peer: payload.senderId };
+          conn.send = (data) => this.sendTo(data);
+          this.onDataCallback(payload.data, conn);
+        }
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Host channel subscribed, game code:', this.gameCode);
+          if (callback) callback(this.gameCode);
+        }
+      });
   }
 
-  // Initialize as client and connect to host
-  initClient(hostId, callback) {
-    this.peer = new Peer();
+  // Initialize as client — joins an existing channel by game code
+  initClient(gameCode, callback) {
     this.isHost = false;
+    this.gameCode = gameCode;
+    this.peerId = 'client_' + Math.random().toString(36).substring(2, 8);
 
-    this.peer.on('open', (id) => {
-      console.log('Client peer ID:', id);
-      this.peerId = id;
-      const conn = this.peer.connect(hostId);
-      this.setupConnection(conn);
-      if (callback) callback(id);
+    this.channel = supabase.channel(`game:${gameCode}`, {
+      config: { broadcast: { self: false } },
     });
 
-    this.peer.on('error', (err) => {
-      console.error('Peer error:', err);
-    });
+    this.channel
+      .on('broadcast', { event: 'game_message' }, ({ payload }) => {
+        console.log('Client received:', payload);
+        if (this.onDataCallback) {
+          this.onDataCallback(payload.data);
+        }
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Client subscribed to game:', gameCode);
+          if (callback) callback(this.peerId);
+        }
+      });
   }
 
-  setupConnection(conn) {
-    conn.on('open', () => {
-      console.log('Connection opened with:', conn.peer);
-      this.connections.push(conn);
-    });
-
-    conn.on('data', (data) => {
-      console.log('Received data:', data);
-      if (this.onDataCallback) {
-        this.onDataCallback(data, conn);
-      }
-      
-      // If host, broadcast to all other connections
-      if (this.isHost) {
-        this.broadcast(data, conn.peer);
-      }
-    });
-
-    conn.on('close', () => {
-      console.log('Connection closed with:', conn.peer);
-      this.connections = this.connections.filter(c => c.peer !== conn.peer);
-    });
-
-    conn.on('error', (err) => {
-      console.error('Connection error:', err);
-    });
-  }
-
-  // Broadcast data to all connections except the sender
-  broadcast(data, exceptPeerId = null) {
-    this.connections.forEach(conn => {
-      if (conn.peer !== exceptPeerId && conn.open) {
-        conn.send(data);
-      }
-    });
-  }
-
-  // Send data to all connections
+  // Broadcast data to all participants on the channel
   sendToAll(data) {
-    this.connections.forEach(conn => {
-      if (conn.open) {
-        conn.send(data);
-      }
+    if (!this.channel) return;
+    this.channel.send({
+      type: 'broadcast',
+      event: 'game_message',
+      payload: { data, senderId: this.peerId },
     });
+  }
+
+  // Alias used by host — in Supabase Realtime broadcast goes to everyone
+  sendTo(data) {
+    this.sendToAll(data);
+  }
+
+  // Broadcast data (same as sendToAll for Supabase channels)
+  broadcast(data, _exceptPeerId = null) {
+    this.sendToAll(data);
   }
 
   // Set callback for received data
@@ -103,24 +93,21 @@ class P2PManager {
     this.onDataCallback = callback;
   }
 
-  // Set callback for new connections
+  // Set callback for new connections (kept for API compatibility)
   onConnection(callback) {
     this.onConnectionCallback = callback;
   }
 
-  // Disconnect all
+  // Disconnect from the channel
   disconnect() {
-    this.connections.forEach(conn => conn.close());
-    if (this.peer) {
-      this.peer.destroy();
+    if (this.channel) {
+      supabase.removeChannel(this.channel);
     }
-    this.connections = [];
-    this.peer = null;
+    this.channel = null;
     this.peerId = null;
+    this.gameCode = null;
   }
 }
 
 // Export as singleton for simple state management across the app.
-// Note: In development with hot reloading, you may need to reload the app
-// to clear stale connection state. For production, this pattern works well.
 export default new P2PManager();

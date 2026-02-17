@@ -28,9 +28,9 @@ const GameScreen = ({ navigation, route }) => {
       const newGame = createNewGame(playerName, holes);
       setGame(newGame);
       
-      // Initialize P2P as host
-      P2PManager.initHost((peerId) => {
-        console.log('Host initialized with peer ID:', peerId);
+      // Initialize as host via Supabase Realtime
+      P2PManager.initHost((hostGameCode) => {
+        console.log('Host initialized with game code:', hostGameCode);
         setMyPlayerId(newGame.players[0].id);
         
         // Show share modal after a short delay
@@ -43,29 +43,25 @@ const GameScreen = ({ navigation, route }) => {
         
         if (data.type === 'JOIN_GAME') {
           // Validate and sanitize player name
-          const playerName = String(data.playerName || 'Anonymous')
+          const joinName = String(data.playerName || 'Anonymous')
             .trim()
-            .substring(0, 50) // Limit to 50 characters
-            .replace(/[^\w\s-]/g, ''); // Remove special characters except spaces and hyphens
+            .substring(0, 50)
+            .replace(/[^\w\s-]/g, '');
           
-          if (!playerName) {
+          if (!joinName) {
             console.warn('Invalid player name received');
             return;
           }
           
+          const joinerId = conn.peer;
           setGame(currentGame => {
-            const updatedGame = addPlayer(currentGame, playerName, conn.peer);
-            // Send current game state to the new player
-            conn.send({
+            const updatedGame = addPlayer(currentGame, joinName, joinerId);
+            // Broadcast updated game state to all players
+            P2PManager.sendToAll({
               type: 'GAME_STATE',
               game: updatedGame,
-              yourPlayerId: conn.peer,
+              yourPlayerId: joinerId,
             });
-            // Broadcast update to all other players
-            P2PManager.broadcast({
-              type: 'GAME_STATE',
-              game: updatedGame,
-            }, conn.peer);
             return updatedGame;
           });
         } else if (data.type === 'UPDATE_SCORE') {
@@ -76,6 +72,11 @@ const GameScreen = ({ navigation, route }) => {
               data.holeIndex,
               data.score
             );
+            // Broadcast updated state to all players
+            P2PManager.sendToAll({
+              type: 'GAME_STATE',
+              game: updatedGame,
+            });
             return updatedGame;
           });
         }
@@ -83,18 +84,7 @@ const GameScreen = ({ navigation, route }) => {
 
     } else {
       // Client joins the game
-      P2PManager.initClient(gameCode, (peerId) => {
-        console.log('Client initialized with peer ID:', peerId);
-        setMyPlayerId(peerId);
-        
-        // Send join request
-        P2PManager.sendToAll({
-          type: 'JOIN_GAME',
-          playerName: playerName,
-        });
-      });
-
-      // Handle incoming data from host
+      // Set up data handler before subscribing
       P2PManager.onData((data) => {
         console.log('Client received data:', data);
         
@@ -106,12 +96,20 @@ const GameScreen = ({ navigation, route }) => {
           setIsConnecting(false);
         }
       });
+
+      P2PManager.initClient(gameCode, (peerId) => {
+        console.log('Client initialized with peer ID:', peerId);
+        setMyPlayerId(peerId);
+        
+        // Send join request
+        P2PManager.sendToAll({
+          type: 'JOIN_GAME',
+          playerName: playerName,
+        });
+      });
     }
 
     // Cleanup on unmount
-    // Note: This disconnects P2P when leaving the game screen.
-    // In a production app, you might want to use navigation lifecycle events
-    // to only disconnect when truly exiting the game (not just navigating away).
     return () => {
       P2PManager.disconnect();
     };
@@ -132,7 +130,7 @@ const GameScreen = ({ navigation, route }) => {
   };
 
   const getShareableCode = () => {
-    return P2PManager.peerId || 'Loading...';
+    return P2PManager.gameCode || 'Loading...';
   };
 
   const handleShare = async () => {
