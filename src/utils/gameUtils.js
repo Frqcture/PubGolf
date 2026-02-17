@@ -1,3 +1,7 @@
+// Generate a simple random game ID
+// Note: Uses Math.random() which is sufficient for small-scale peer-to-peer games.
+// For production use with many concurrent games, consider using a more robust
+// ID generation method like UUID to avoid potential collisions.
 export const generateGameId = () => {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 };

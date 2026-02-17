@@ -42,8 +42,19 @@ const GameScreen = ({ navigation, route }) => {
         console.log('Host received data:', data);
         
         if (data.type === 'JOIN_GAME') {
+          // Validate and sanitize player name
+          const playerName = String(data.playerName || 'Anonymous')
+            .trim()
+            .substring(0, 50) // Limit to 50 characters
+            .replace(/[^\w\s-]/g, ''); // Remove special characters except spaces and hyphens
+          
+          if (!playerName) {
+            console.warn('Invalid player name received');
+            return;
+          }
+          
           setGame(currentGame => {
-            const updatedGame = addPlayer(currentGame, data.playerName, conn.peer);
+            const updatedGame = addPlayer(currentGame, playerName, conn.peer);
             // Send current game state to the new player
             conn.send({
               type: 'GAME_STATE',
@@ -98,6 +109,9 @@ const GameScreen = ({ navigation, route }) => {
     }
 
     // Cleanup on unmount
+    // Note: This disconnects P2P when leaving the game screen.
+    // In a production app, you might want to use navigation lifecycle events
+    // to only disconnect when truly exiting the game (not just navigating away).
     return () => {
       P2PManager.disconnect();
     };

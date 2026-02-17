@@ -120,4 +120,7 @@ class P2PManager {
   }
 }
 
+// Export as singleton for simple state management across the app.
+// Note: In development with hot reloading, you may need to reload the app
+// to clear stale connection state. For production, this pattern works well.
 export default new P2PManager();
