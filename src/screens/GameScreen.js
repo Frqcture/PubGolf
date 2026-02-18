@@ -14,7 +14,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import P2PManager from '../utils/P2PManager';
 import { createNewGame, addPlayer, updateScore, calculateTotal } from '../utils/gameUtils';
-import { saveCurrentGame, clearCurrentGame, removeFromActiveGames } from '../utils/storageUtils';
+import { saveCurrentGame, clearCurrentGame, removeFromActiveGames, getCurrentGame } from '../utils/storageUtils';
 
 const GameScreen = ({ navigation, route }) => {
   const { playerName, holes, isHost, gameCode, resuming, myPlayerId: initialPlayerId } = route.params;
@@ -25,21 +25,136 @@ const GameScreen = ({ navigation, route }) => {
   const [activeTab, setActiveTab] = useState('myScore'); // 'myScore' or 'leaderboard'
 
   useEffect(() => {
-    // Try to resume from saved game first
-    if (resuming && initialPlayerId) {
-      // Reconnect to the game
-      if (isHost) {
-        P2PManager.initHost((hostGameCode) => {
-          console.log('Host resumed with game code:', hostGameCode);
-        });
-      } else {
-        P2PManager.initClient(gameCode, (peerId) => {
-          console.log('Client resumed with peer ID:', peerId);
-        });
+    const initializeGame = async () => {
+      // Try to resume from saved game first
+      if (resuming && initialPlayerId) {
+        // Load the saved game state
+        const savedGame = await getCurrentGame();
+        if (savedGame && savedGame.game) {
+          setGame(savedGame.game);
+        }
+        
+        // Reconnect to the game
+        if (isHost) {
+          P2PManager.initHost((hostGameCode) => {
+            console.log('Host resumed with game code:', hostGameCode);
+          });
+          
+          // Handle incoming data from clients
+          P2PManager.onData((data, conn) => {
+            console.log('Host received data:', data);
+            
+            if (data.type === 'JOIN_GAME') {
+              // Validate and sanitize player name
+              const joinName = String(data.playerName || 'Anonymous')
+                .trim()
+                .substring(0, 50)
+                .replace(/[^\w\s-]/g, '');
+              
+              if (!joinName) {
+                console.warn('Invalid player name received');
+                return;
+              }
+              
+              const joinerId = conn.peer;
+              setGame(currentGame => {
+                const updatedGame = addPlayer(currentGame, joinName, joinerId);
+                // Broadcast updated game state to all players
+                P2PManager.sendToAll({
+                  type: 'GAME_STATE',
+                  game: updatedGame,
+                  yourPlayerId: joinerId,
+                });
+                
+                // Save updated game
+                saveCurrentGame({
+                  game: updatedGame,
+                  gameCode: P2PManager.gameCode,
+                  playerName,
+                  myPlayerId: currentGame.players[0].id,
+                  isHost: true,
+                  holes: currentGame.holes,
+                });
+                
+                return updatedGame;
+              });
+            } else if (data.type === 'UPDATE_SCORE') {
+              setGame(currentGame => {
+                const updatedGame = updateScore(
+                  currentGame,
+                  data.playerId,
+                  data.holeIndex,
+                  data.score
+                );
+                // Broadcast updated state to all players
+                P2PManager.sendToAll({
+                  type: 'GAME_STATE',
+                  game: updatedGame,
+                });
+                
+                // Save updated game
+                saveCurrentGame({
+                  game: updatedGame,
+                  gameCode: P2PManager.gameCode,
+                  playerName,
+                  myPlayerId: currentGame.players[0].id,
+                  isHost: true,
+                  holes: currentGame.holes,
+                });
+                
+                return updatedGame;
+              });
+            } else if (data.type === 'LEAVE_GAME') {
+              setGame(currentGame => {
+                const updatedGame = {
+                  ...currentGame,
+                  players: currentGame.players.filter(p => p.id !== data.playerId),
+                };
+                // Broadcast updated state to all players
+                P2PManager.sendToAll({
+                  type: 'GAME_STATE',
+                  game: updatedGame,
+                });
+                return updatedGame;
+              });
+            } else if (data.type === 'END_GAME') {
+              handleGameEnded();
+            }
+          });
+        } else {
+          P2PManager.initClient(gameCode, (peerId) => {
+            console.log('Client resumed with peer ID:', peerId);
+          });
+          
+          // Set up data handler
+          P2PManager.onData((data) => {
+            console.log('Client received data:', data);
+            
+            if (data.type === 'GAME_STATE') {
+              setGame(data.game);
+              if (data.yourPlayerId) {
+                setMyPlayerId(data.yourPlayerId);
+                
+                // Save game to local storage
+                saveCurrentGame({
+                  game: data.game,
+                  gameCode,
+                  playerName,
+                  myPlayerId: data.yourPlayerId,
+                  isHost: false,
+                  holes: data.game.holes,
+                });
+              }
+              setIsConnecting(false);
+            } else if (data.type === 'END_GAME') {
+              handleGameEnded();
+            }
+          });
+        }
+        return;
       }
-    }
 
-    if (isHost && !resuming) {
+      if (isHost && !resuming) {
       // Host creates the game
       const newGame = createNewGame(playerName, holes);
       setGame(newGame);
@@ -183,6 +298,8 @@ const GameScreen = ({ navigation, route }) => {
         });
       });
     }
+
+    initializeGame();
 
     // Cleanup on unmount
     return () => {
@@ -503,7 +620,6 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     flexDirection: 'row',
-    gap: 10,
   },
   title: {
     fontSize: 24,
@@ -520,6 +636,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
+    marginLeft: 10,
   },
   shareButtonText: {
     color: '#1a5f3f',
@@ -531,6 +648,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
+    marginLeft: 10,
   },
   leaveButtonText: {
     color: '#fff',
@@ -542,6 +660,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
+    marginLeft: 10,
   },
   endButtonText: {
     color: '#fff',
@@ -681,7 +800,6 @@ const styles = StyleSheet.create({
   scoresPreview: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 5,
   },
   scorePreviewText: {
     fontSize: 12,
@@ -690,6 +808,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 5,
+    marginRight: 5,
+    marginBottom: 5,
   },
   loadingContainer: {
     flex: 1,
