@@ -10,6 +10,8 @@ import {
   Alert,
   Share,
   Modal,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import P2PManager from '../utils/P2PManager';
@@ -446,10 +448,30 @@ const GameScreen = ({ navigation, route }) => {
     return aTotal - bTotal;
   });
 
+  const handleGoHome = () => {
+    Alert.alert(
+      'Return to Home',
+      'Are you sure you want to return to the home screen? Your game will be saved.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Go Home',
+          onPress: () => navigation.navigate('Home'),
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
+        <TouchableOpacity 
+          style={styles.homeButton} 
+          onPress={handleGoHome}
+        >
+          <Text style={styles.homeButtonText}>← Home</Text>
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
           <Text style={styles.title}>🏌️ Pub Golf</Text>
           <Text style={styles.gameCodeText}>Code: {P2PManager.gameCode || gameCode}</Text>
         </View>
@@ -502,7 +524,7 @@ const GameScreen = ({ navigation, route }) => {
 
       {/* Content based on active tab */}
       {activeTab === 'myScore' ? (
-        // My Score View - Holes on Y-axis
+        // My Score View - Table format with headers
         <ScrollView style={styles.scrollView}>
           <View style={styles.myScoreContainer}>
             {myPlayer && (
@@ -510,25 +532,46 @@ const GameScreen = ({ navigation, route }) => {
                 <Text style={styles.playerNameTitle}>
                   {myPlayer.name} {myPlayer.isHost && '👑'}
                 </Text>
-                {game.holes.map((hole, index) => (
-                  <View key={index} style={styles.holeRow}>
-                    <View style={styles.holeInfo}>
-                      <Text style={styles.holeName}>{hole.name}</Text>
-                      <Text style={styles.holePar}>Par {hole.par}</Text>
+                {/* Table Header */}
+                <View style={styles.tableHeader}>
+                  <Text style={styles.tableHeaderTextPub}>Pub</Text>
+                  <Text style={styles.tableHeaderTextNum}>Par</Text>
+                  <Text style={styles.tableHeaderTextNum}>Score</Text>
+                  <Text style={styles.tableHeaderTextNum}>+/-</Text>
+                </View>
+                {/* Table Rows */}
+                {game.holes.map((hole, index) => {
+                  const score = myPlayer.scores[index] || 0;
+                  const par = hole.par;
+                  const diff = score > 0 ? score - par : 0;
+                  const diffText = diff > 0 ? `+${diff}` : diff === 0 && score > 0 ? '0' : '';
+                  
+                  return (
+                    <View key={index} style={styles.tableRow}>
+                      <Text style={styles.tableCellPub}>{hole.name}</Text>
+                      <Text style={styles.tableCellNum}>{hole.par}</Text>
+                      <View style={styles.tableCellScore}>
+                        <TextInput
+                          style={styles.scoreInput}
+                          value={score === 0 ? '' : String(score)}
+                          onChangeText={(text) => 
+                            handleScoreChange(myPlayer.id, index, text)
+                          }
+                          keyboardType="numeric"
+                          placeholder="-"
+                          placeholderTextColor="#999"
+                        />
+                      </View>
+                      <Text style={[
+                        styles.tableCellNum,
+                        diff > 0 && styles.diffPositive,
+                        diff < 0 && styles.diffNegative,
+                      ]}>
+                        {diffText}
+                      </Text>
                     </View>
-                    <View style={styles.scoreInputContainer}>
-                      <TextInput
-                        style={styles.scoreInputLarge}
-                        value={myPlayer.scores[index] === 0 ? '' : String(myPlayer.scores[index])}
-                        onChangeText={(text) => 
-                          handleScoreChange(myPlayer.id, index, text)
-                        }
-                        keyboardType="numeric"
-                        placeholder="0"
-                      />
-                    </View>
-                  </View>
-                ))}
+                  );
+                })}
                 <View style={styles.totalRow}>
                   <Text style={styles.totalLabel}>Total</Text>
                   <Text style={styles.totalValue}>{calculateTotal(myPlayer.scores)}</Text>
@@ -608,6 +651,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a5f3f',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   header: {
     flexDirection: 'row',
@@ -615,6 +659,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 15,
     paddingTop: 10,
+  },
+  homeButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  homeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
   },
   headerLeft: {
     flex: 1,
@@ -703,52 +760,83 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 20,
+    marginBottom: 15,
     textAlign: 'center',
   },
-  holeRow: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 10,
+  tableHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    backgroundColor: '#145238',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
     alignItems: 'center',
   },
-  holeInfo: {
-    flex: 1,
-  },
-  holeName: {
-    fontSize: 18,
+  tableHeaderTextPub: {
+    flex: 2,
+    color: '#fff',
     fontWeight: 'bold',
-    color: '#1a5f3f',
-    marginBottom: 5,
-  },
-  holePar: {
     fontSize: 14,
-    color: '#666',
   },
-  scoreInputContainer: {
-    marginLeft: 15,
+  tableHeaderTextNum: {
+    flex: 1,
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+    textAlign: 'center',
   },
-  scoreInputLarge: {
+  tableRow: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    alignItems: 'center',
+  },
+  tableCellPub: {
+    flex: 2,
+    fontSize: 14,
+    color: '#333',
+  },
+  tableCellNum: {
+    flex: 1,
+    fontSize: 14,
+    color: '#333',
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  tableCellScore: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  scoreInput: {
     backgroundColor: '#f5f5f5',
-    borderRadius: 10,
-    padding: 15,
-    fontSize: 24,
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    fontSize: 14,
     fontWeight: 'bold',
     textAlign: 'center',
-    width: 80,
+    minWidth: 50,
     color: '#1a5f3f',
+  },
+  diffPositive: {
+    color: '#e74c3c',
+  },
+  diffNegative: {
+    color: '#27ae60',
   },
   totalRow: {
     backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 20,
-    marginTop: 10,
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 10,
+    padding: 15,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    borderTopWidth: 2,
+    borderTopColor: '#1a5f3f',
   },
   totalLabel: {
     fontSize: 20,
