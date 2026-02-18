@@ -4,7 +4,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@env';
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   realtime: {
     params: {
-      eventsPerSecond: 10,
+      eventsPerSecond: 3, // Reduced from 10 to limit potential abuse
     },
   },
 });
