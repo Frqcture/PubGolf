@@ -298,6 +298,7 @@ const GameScreen = ({ navigation, route }) => {
         });
       });
     }
+    };
 
     initializeGame();
 
