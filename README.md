@@ -6,9 +6,14 @@ A React Native app for playing Pub Golf with friends using peer-to-peer connecti
 
 - **Create Games**: Set up your own pub golf course with custom holes and pars
 - **Join Games**: Join a friend's game using a simple code
-- **Peer-to-Peer**: No backend needed - everything runs peer-to-peer using PeerJS
-- **Real-time Scoring**: Track scores for all players in real-time
+- **Resume Games**: Games are saved locally - resume anytime even after closing the app
+- **My Score View**: Clean, vertical layout to track your own scores with large input fields
+- **Leaderboard**: Separate tab to view all players ranked by total score
+- **Real-time Sync**: All scores synchronized in real-time via Supabase Realtime
+- **Leave Game**: Non-hosts can leave a game they've joined
+- **End Game**: Hosts can end the game for all players
 - **No Accounts**: Just enter your name and start playing
+- **Local Storage**: Games persist on your device even when the app is closed
 
 ## How to Play Pub Golf
 
@@ -52,9 +57,10 @@ Pub Golf is a drinking game where you visit multiple pubs (holes) and try to fin
 
 ### Troubleshooting
 
-- If you encounter issues with PeerJS connections, ensure both devices are on the same network or have internet connectivity
-- The peer-to-peer connection uses public STUN servers, so an internet connection is required
+- If you encounter connection issues, ensure you have a stable internet connection (required for Supabase Realtime)
+- Games are saved locally - you can resume them even without internet, but live sync requires connectivity
 - If the QR code doesn't scan, you can manually enter the URL shown in the terminal
+- To clear saved games, you may need to clear app data or reinstall the app
 
 ## How to Use
 
@@ -75,10 +81,17 @@ Pub Golf is a drinking game where you visit multiple pubs (holes) and try to fin
 
 ### During the Game
 
+- **Two Viewing Modes**:
+  - **My Score Tab**: View and edit only your own scores in a clean vertical layout
+  - **Leaderboard Tab**: See all players ranked by total score
 - Each player can only edit their own scores
-- All scores are synchronized in real-time via peer-to-peer connection
+- All scores are synchronized in real-time via Supabase Realtime
 - The host is marked with a 👑 crown
 - Your name is marked with "(You)"
+- **Game Management**:
+  - Non-host players can leave the game using the "Leave" button
+  - The host can end the game for everyone using the "End" button
+- **Persistence**: Games are automatically saved to your device and can be resumed from the home screen
 
 ## Technical Details
 
@@ -86,19 +99,21 @@ Pub Golf is a drinking game where you visit multiple pubs (holes) and try to fin
 
 - **Framework**: React Native with Expo
 - **Navigation**: React Navigation (Native Stack Navigator)
-- **P2P Communication**: PeerJS for peer-to-peer connectivity via WebRTC
+- **Real-time Communication**: Supabase Realtime for game state synchronization
+- **Local Storage**: AsyncStorage for persisting game state on device
 - **State Management**: React hooks (useState, useEffect)
-- **No Backend**: Completely serverless - all game state is synchronized peer-to-peer
+- **Minimal Backend**: Uses Supabase only for real-time messaging, no database storage
 
-### How Peer-to-Peer Works
+### How Real-time Sync Works
 
-1. **Game Creation**: When a host creates a game, they initialize a PeerJS connection and receive a unique peer ID
-2. **Game Joining**: Players join by connecting to the host's peer ID (the game code)
+1. **Game Creation**: When a host creates a game, they initialize a Supabase Realtime channel with a unique game code
+2. **Game Joining**: Players join by subscribing to the same channel using the game code
 3. **Data Synchronization**: 
    - When a new player joins, the host sends them the complete game state
-   - Score updates are broadcast from the player who made the change
-   - The host relays all updates to ensure all players stay in sync
-4. **Connection**: Uses WebRTC with public STUN servers for NAT traversal
+   - Score updates are broadcast to all subscribers on the channel
+   - The host maintains the authoritative game state
+4. **Persistence**: All game state is saved locally on each device using AsyncStorage
+5. **Resume**: When the app is reopened, active games are shown and can be rejoined
 
 ### Project Structure
 
@@ -110,34 +125,36 @@ PubGolf/
 ├── assets/                     # App icons and images
 └── src/
     ├── screens/
-    │   ├── HomeScreen.js       # Welcome screen (create/join)
+    │   ├── HomeScreen.js       # Welcome screen (create/join/resume)
     │   ├── GameSetupScreen.js  # Course setup for hosts
-    │   └── GameScreen.js       # Main game with scorecard
+    │   └── GameScreen.js       # Game with tabs (My Score/Leaderboard)
     └── utils/
-        ├── P2PManager.js       # Peer-to-peer connection manager
-        └── gameUtils.js        # Game state utilities
+        ├── P2PManager.js       # Supabase Realtime connection manager
+        ├── gameUtils.js        # Game state utilities
+        └── storageUtils.js     # AsyncStorage persistence utilities
 ```
 
 ### Key Components
 
-- **P2PManager**: Singleton class managing all peer-to-peer connections
-- **HomeScreen**: Entry point for creating or joining games
+- **P2PManager**: Singleton class managing Supabase Realtime connections and broadcasting
+- **storageUtils**: Local persistence utilities using AsyncStorage
+- **HomeScreen**: Entry point for creating, joining, or resuming games
 - **GameSetupScreen**: Allows hosts to configure holes (pubs) and pars
-- **GameScreen**: Real-time scorecard with live updates via P2P
+- **GameScreen**: Two-tab interface with "My Score" and "Leaderboard" views
 
 ## Future Improvements
 
 Potential enhancements for future versions:
 
 - **QR Code Sharing**: Generate QR codes for easier game joining
-- **Game History**: Save completed games locally
-- **Statistics**: Track personal bests and statistics
+- **Game History**: View completed game results and statistics
+- **Statistics**: Track personal bests and long-term statistics
 - **Themes**: Customizable color schemes
 - **Sound Effects**: Audio feedback for score updates
-- **Offline Mode**: Save game state locally for network interruptions
 - **Custom Pars**: Add drink descriptions or special rules per hole
-- **Leaderboard**: Enhanced sorting and ranking display
+- **Enhanced Leaderboard**: Show score differentials and par tracking
 - **Profile Pictures**: Add avatars for players
+- **In-game Chat**: Text messaging between players
 
 ## Development
 
