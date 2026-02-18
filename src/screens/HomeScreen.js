@@ -78,9 +78,9 @@ const HomeScreen = ({ navigation }) => {
           {activeGames.length > 0 && (
             <View style={styles.activeGamesSection}>
               <Text style={styles.sectionTitle}>Active Games</Text>
-              {activeGames.map((game, index) => (
+              {activeGames.map((game) => (
                 <TouchableOpacity
-                  key={index}
+                  key={game.gameCode}
                   style={styles.gameCard}
                   onPress={() => handleResumeGame(game)}
                 >

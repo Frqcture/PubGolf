@@ -302,10 +302,10 @@ const GameScreen = ({ navigation, route }) => {
     initializeGame();
 
     // Cleanup on unmount
-    return () => {
-      // Don't disconnect on unmount to maintain connection
-      // P2PManager.disconnect();
-    };
+    // Note: We intentionally don't call P2PManager.disconnect() here to maintain
+    // the connection when the user navigates away or the app backgrounds.
+    // Disconnection is only done when explicitly leaving/ending the game.
+    return () => {};
   }, []);
 
   const handleScoreChange = (playerId, holeIndex, score) => {
