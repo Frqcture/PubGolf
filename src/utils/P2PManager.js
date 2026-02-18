@@ -22,7 +22,7 @@ class P2PManager {
     this.peerId = 'host_' + Math.random().toString(36).substring(2, 8);
 
     this.channel = supabase.channel(`game:${this.gameCode}`, {
-      config: { broadcast: { self: false } },
+      config: { broadcast: { self: true } },
     });
 
     this.channel
@@ -50,7 +50,7 @@ class P2PManager {
     this.peerId = 'client_' + Math.random().toString(36).substring(2, 8);
 
     this.channel = supabase.channel(`game:${gameCode}`, {
-      config: { broadcast: { self: false } },
+      config: { broadcast: { self: true } },
     });
 
     this.channel
