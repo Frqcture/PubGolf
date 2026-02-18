@@ -543,8 +543,8 @@ const GameScreen = ({ navigation, route }) => {
                 {game.holes.map((hole, index) => {
                   const score = myPlayer.scores[index] || 0;
                   const par = hole.par;
-                  const diff = score > 0 ? score - par : 0;
-                  const diffText = diff > 0 ? `+${diff}` : diff === 0 && score > 0 ? '0' : '';
+                  const diff = score > 0 ? score - par : null;
+                  const diffText = score > 0 ? (diff > 0 ? `+${diff}` : diff < 0 ? String(diff) : '0') : '';
                   
                   return (
                     <View key={index} style={styles.tableRow}>
@@ -672,9 +672,6 @@ const styles = StyleSheet.create({
   headerCenter: {
     flex: 1,
     alignItems: 'center',
-  },
-  headerLeft: {
-    flex: 1,
   },
   headerRight: {
     flexDirection: 'row',
